@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>春招作战室</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="setup-screen" class="setup-screen" style="display:none;">
+  <div class="setup-box">
+    <h1>🌱 春招作战室</h1>
+    <p>首次使用需要填入以下配置（只需一次，之后自动记住）</p>
+    <div class="setup-tip">📖 不知道在哪里找？查看配套《部署教程.docx》</div>
+    <div class="setup-section">
+      <div class="setup-section-label">数据库配置（Supabase）</div>
+      <div class="form-group"><label>Supabase URL</label><input id="setup-url" placeholder="https://xxxxxx.supabase.co" /></div>
+      <div class="form-group" style="margin-top:10px;"><label>Supabase Anon Key</label><input id="setup-key" placeholder="eyJhbGciOiJIUzI1NiIs..." /></div>
+    </div>
+    <div class="setup-section" style="border-top:none;">
+      <div class="setup-section-label">AI 分析（可选，用于简历匹配功能）</div>
+      <div class="form-group"><label>Claude API Key</label><input id="setup-claude-key" type="password" placeholder="sk-ant-api03-..." /></div>
+      <div style="font-size:11px;color:var(--ink-faint);margin-top:6px;">没有可先跳过，在「设置」里补填。获取地址：console.anthropic.com</div>
+    </div>
+    <button class="btn btn-primary" style="width:100%;margin-top:16px;" onclick="saveConfig()">开始使用 →</button>
+  </div>
+</div>
+
+<div id="app" style="display:none;">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="logo"><h1>春招作战室</h1><p>2025 · 春季招聘</p></div>
+    <nav class="nav">
+      <div class="nav-item active" onclick="navigate('dashboard')"><span class="icon">◈</span> 作战概览</div>
+      <div class="nav-item" onclick="navigate('wishlist')"><span class="icon">○</span> 目标岗位</div>
+      <div class="nav-item" onclick="navigate('tracker')"><span class="icon">◎</span> 投递追踪</div>
+      <div class="nav-item" onclick="navigate('calendar')"><span class="icon">□</span> 截止日历</div>
+      <div class="nav-item" onclick="navigate('review')"><span class="icon">◇</span> 面试复盘</div>
+      <div class="nav-item ai-nav-item" onclick="navigate('aimatch')"><span class="icon">✦</span> AI 匹配分析</div>
+    </nav>
+    <div class="sidebar-footer">
+      <div id="sync-status">☁ 云端同步</div>
+      <button class="btn btn-ghost btn-sm" onclick="openSettings()" style="margin-top:6px;font-size:11px;padding:3px 8px;">⚙ 设置</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div id="page-dashboard" class="page active">
+      <div class="page-header"><h2>作战概览</h2><p id="dashboard-subtitle">加载中…</p></div>
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-label">待投递</div><div class="stat-value" id="stat-wishlist">—</div><div class="stat-sub">个目标岗位</div></div>
+        <div class="stat-card"><div class="stat-label">已投递</div><div class="stat-value" id="stat-applied">—</div><div class="stat-sub">家公司</div></div>
+        <div class="stat-card"><div class="stat-label">进入面试</div><div class="stat-value" id="stat-interview">—</div><div class="stat-sub">转化率 <span id="stat-rate">—</span></div></div>
+        <div class="stat-card"><div class="stat-label">Offer</div><div class="stat-value" id="stat-offer" style="color:var(--accent)">—</div><div class="stat-sub">个意向书</div></div>
+        <div class="stat-card"><div class="stat-label">近期截止</div><div class="stat-value" id="stat-deadline" style="color:var(--warn)">—</div><div class="stat-sub">7天内到期</div></div>
+      </div>
+      <div class="dashboard-grid">
+        <div class="chart-card"><div class="chart-title">投递漏斗</div><div class="funnel" id="funnel-chart"></div></div>
+        <div class="chart-card"><div class="chart-title">公司类型分布</div><div class="donut-wrap"><canvas id="donut-canvas" width="100" height="100"></canvas><div class="donut-legend" id="donut-legend"></div></div></div>
+      </div>
+      <div class="section">
+        <div class="section-header"><div class="section-title">即将到期 ⚡</div><button class="btn btn-ghost btn-sm" onclick="navigate('calendar')">查看日历</button></div>
+        <div class="deadline-list" id="upcoming-deadlines"></div>
+      </div>
+    </div>
+
+    <div id="page-wishlist" class="page">
+      <div class="page-header"><h2>目标岗位</h2><p>还没投出去的，先在这里收藏盯着</p></div>
+      <div class="section">
+        <div class="section-header"><div class="section-title">Wishlist</div><button class="btn btn-primary" onclick="openModal('wishlist')">＋ 添加岗位</button></div>
+        <div class="table-wrap"><table><thead><tr><th>公司 / 岗位</th><th>类型</th><th>优先级</th><th>截止日期</th><th>薪资参考</th><th>JD链接</th><th>操作</th></tr></thead><tbody id="wishlist-tbody"></tbody></table></div>
+      </div>
+    </div>
+
+    <div id="page-tracker" class="page">
+      <div class="page-header"><h2>投递追踪</h2><p>记录每一次投递，一眼看清进展</p></div>
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">进行中</div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <select id="filter-status" style="font-size:12px;padding:6px 10px;" onchange="renderTracker()">
+              <option value="">全部状态</option><option value="pending">已投递</option><option value="written">笔试</option><option value="interview1">一面</option><option value="interview2">二面</option><option value="offer">Offer</option><option value="rejected">已凉</option>
+            </select>
+            <button class="btn btn-primary" onclick="openModal('tracker')">＋ 添加投递</button>
+          </div>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>公司 / 岗位</th><th>状态</th><th>投递日期</th><th>下次节点</th><th>薪资</th><th>备注</th><th>操作</th></tr></thead><tbody id="tracker-tbody"></tbody></table></div>
+      </div>
+    </div>
+
+    <div id="page-calendar" class="page">
+      <div class="page-header"><h2>截止日历</h2><p>笔试、面试、投递截止，全在这里</p></div>
+      <div class="section">
+        <div class="section-header">
+          <div class="cal-nav"><button class="cal-nav-btn" onclick="changeMonth(-1)">‹</button><div class="cal-month-title" id="cal-month-title"></div><button class="cal-nav-btn" onclick="changeMonth(1)">›</button></div>
+          <button class="btn btn-primary" onclick="openModal('event')">＋ 添加事件</button>
+        </div>
+        <div class="cal-header"><div class="cal-day-label">一</div><div class="cal-day-label">二</div><div class="cal-day-label">三</div><div class="cal-day-label">四</div><div class="cal-day-label">五</div><div class="cal-day-label">六</div><div class="cal-day-label">日</div></div>
+        <div class="calendar-grid" id="calendar-grid"></div>
+      </div>
+    </div>
+
+    <div id="page-review" class="page">
+      <div class="page-header"><h2>面试复盘</h2><p>每次面完趁热打铁记录下来，进步会很快</p></div>
+      <div class="section">
+        <div class="section-header"><div class="section-title">复盘记录</div><button class="btn btn-primary" onclick="openModal('review')">＋ 添加复盘</button></div>
+        <div class="review-grid" id="review-grid"></div>
+      </div>
+    </div>
+
+    <div id="page-aimatch" class="page">
+      <div class="page-header"><h2>AI 匹配分析</h2><p>上传简历 + 粘贴 JD，AI 分析匹配度、找差距、给改简历建议</p></div>
+      <div class="ai-match-layout">
+        <div class="ai-input-panel">
+          <div class="section">
+            <div class="section-header"><div class="section-title">① 你的简历</div></div>
+            <div class="resume-upload-area" id="resume-drop" onclick="document.getElementById('resume-file').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleResumeDrop(event)">
+              <div style="font-size:30px;margin-bottom:8px;">📄</div>
+              <div style="font-size:13px;font-weight:500;color:var(--ink-muted);">点击上传 PDF 简历</div>
+              <div style="font-size:11px;color:var(--ink-faint);margin-top:3px;">支持 PDF · 或拖拽文件到此处</div>
+              <input type="file" id="resume-file" accept=".pdf,.txt" style="display:none" onchange="handleResumeUpload(this)" />
+            </div>
+            <div id="resume-badge" style="display:none;" class="file-badge">
+              <span>📄 </span><span id="resume-filename" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;"></span>
+              <button onclick="clearResume()" class="file-remove">✕</button>
+            </div>
+            <div style="margin-top:12px;">
+              <div style="font-size:11px;color:var(--ink-faint);margin-bottom:6px;">或直接粘贴简历文字</div>
+              <textarea id="resume-text" placeholder="将简历文字粘贴到这里…" style="min-height:120px;width:100%;font-size:12px;"></textarea>
+            </div>
+          </div>
+          <div class="section">
+            <div class="section-header"><div class="section-title">② 目标岗位 JD</div></div>
+            <input id="jd-company" placeholder="公司名称（可选）" style="width:100%;margin-bottom:8px;" />
+            <input id="jd-position" placeholder="岗位名称（可选）" style="width:100%;margin-bottom:8px;" />
+            <textarea id="jd-text" placeholder="将岗位 JD 全文粘贴到这里…&#10;&#10;越完整越准确，包含岗位职责、任职要求、技能要求等" style="min-height:180px;width:100%;font-size:12px;"></textarea>
+          </div>
+          <div id="no-key-warning" style="display:none;padding:11px 14px;background:var(--warn-light);border-radius:8px;font-size:12px;color:var(--warn);margin-bottom:12px;">⚠ 未配置 Claude API Key，请点左下角「设置」填入</div>
+          <button class="btn btn-primary" id="analyze-btn" style="width:100%;padding:13px;font-size:14px;" onclick="runAIAnalysis()">✦ 开始 AI 分析</button>
+        </div>
+        <div class="ai-result-panel" id="ai-result-panel">
+          <div id="result-empty" class="result-placeholder"><div style="font-size:38px;opacity:.2;margin-bottom:14px;">✦</div><p style="color:var(--ink-faint);font-size:13px;line-height:1.9;text-align:center;">填写左侧简历和 JD<br>点击分析按钮查看结果</p></div>
+          <div id="result-loading" style="display:none;" class="result-placeholder"><div class="loading-dots"><span></span><span></span><span></span></div><p style="margin-top:18px;color:var(--ink-muted);font-size:13px;">AI 分析中，通常需要 15-25 秒…</p></div>
+          <div id="result-content" style="display:none;">
+            <div class="score-section">
+              <div class="score-circle" id="score-circle"><div class="score-num" id="score-num">—</div><div class="score-sublabel">匹配度</div></div>
+              <div class="score-meta"><div id="score-company" class="score-company-name"></div><div id="score-verdict" class="score-verdict-text"></div><div id="score-tags"></div></div>
+            </div>
+            <div class="result-block"><div class="result-block-title">💪 优势匹配</div><div id="result-strengths"></div></div>
+            <div class="result-block"><div class="result-block-title">⚡ 差距与不足</div><div id="result-gaps"></div></div>
+            <div class="result-block"><div class="result-block-title">✏️ 简历修改建议</div><div id="result-suggestions"></div></div>
+            <div class="result-block"><div class="result-block-title">🎯 面试高频考点预测</div><div id="result-interviews"></div></div>
+            <div class="result-block"><div class="result-block-title">💬 综合总结</div><div id="result-summary" class="result-summary-box"></div></div>
+            <button class="btn btn-ghost" style="width:100%;margin-top:10px;" onclick="saveAnalysisResult()">💾 保存此次分析</button>
+          </div>
+        </div>
+      </div>
+      <div class="section" style="margin-top:48px;">
+        <div class="section-header"><div class="section-title">历史分析记录</div></div>
+        <div class="review-grid" id="analysis-history-grid"><div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">✦</div><p>还没有分析记录</p></div></div>
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- Modals -->
+<div class="modal-overlay" id="modal-wishlist"><div class="modal"><div class="modal-header"><div class="modal-title">添加目标岗位</div><button class="modal-close" onclick="closeModal('wishlist')">×</button></div><div class="modal-body"><div class="form-grid"><div class="form-group"><label>公司名称 *</label><input id="w-company" placeholder="例：字节跳动" /></div><div class="form-group"><label>岗位名称 *</label><input id="w-position" placeholder="例：产品经理实习" /></div><div class="form-group"><label>公司类型</label><select id="w-type"><option>大厂</option><option>独角兽</option><option>外企</option><option>国企</option><option>中小厂</option><option>其他</option></select></div><div class="form-group"><label>优先级</label><select id="w-priority"><option value="high">🔴 高</option><option value="mid">🟡 中</option><option value="low">⚪ 低</option></select></div><div class="form-group"><label>投递截止日期</label><input id="w-deadline" type="date" /></div><div class="form-group"><label>薪资参考</label><input id="w-salary" placeholder="例：200/天" /></div><div class="form-group full"><label>JD 链接</label><input id="w-link" placeholder="https://..." /></div><div class="form-group full"><label>备注</label><textarea id="w-note" placeholder="JD 亮点、内推渠道…"></textarea></div></div><div class="form-actions"><button class="btn btn-ghost" onclick="closeModal('wishlist')">取消</button><button class="btn btn-primary" onclick="saveWishlist()">保存</button></div></div></div></div>
+<div class="modal-overlay" id="modal-tracker"><div class="modal"><div class="modal-header"><div class="modal-title">添加投递记录</div><button class="modal-close" onclick="closeModal('tracker')">×</button></div><div class="modal-body"><div class="form-grid"><div class="form-group"><label>公司名称 *</label><input id="t-company" placeholder="例：腾讯" /></div><div class="form-group"><label>岗位名称 *</label><input id="t-position" placeholder="例：后端工程师" /></div><div class="form-group"><label>当前状态</label><select id="t-status"><option value="pending">已投递</option><option value="written">笔试</option><option value="interview1">一面</option><option value="interview2">二面</option><option value="offer">Offer ✓</option><option value="rejected">已凉</option></select></div><div class="form-group"><label>投递日期</label><input id="t-date" type="date" /></div><div class="form-group"><label>下次节点时间</label><input id="t-next" type="date" /></div><div class="form-group"><label>薪资</label><input id="t-salary" placeholder="例：16k × 15" /></div><div class="form-group full"><label>备注</label><textarea id="t-note" placeholder="面试官联系、特别要求…"></textarea></div></div><div class="form-actions"><button class="btn btn-ghost" onclick="closeModal('tracker')">取消</button><button class="btn btn-primary" onclick="saveTracker()">保存</button></div></div></div></div>
+<div class="modal-overlay" id="modal-event"><div class="modal"><div class="modal-header"><div class="modal-title">添加日历事件</div><button class="modal-close" onclick="closeModal('event')">×</button></div><div class="modal-body"><div class="form-grid"><div class="form-group"><label>描述 *</label><input id="e-title" placeholder="例：阿里巴巴笔试" /></div><div class="form-group"><label>类型</label><select id="e-type"><option value="deadline">投递截止</option><option value="written">笔试</option><option value="interview">面试</option></select></div><div class="form-group full"><label>日期 *</label><input id="e-date" type="date" /></div><div class="form-group full"><label>备注</label><input id="e-note" placeholder="时间、地点…" /></div></div><div class="form-actions"><button class="btn btn-ghost" onclick="closeModal('event')">取消</button><button class="btn btn-primary" onclick="saveEvent()">保存</button></div></div></div></div>
+<div class="modal-overlay" id="modal-review"><div class="modal"><div class="modal-header"><div class="modal-title">面试复盘</div><button class="modal-close" onclick="closeModal('review')">×</button></div><div class="modal-body"><div class="form-grid"><div class="form-group"><label>公司名称 *</label><input id="r-company" placeholder="例：美团" /></div><div class="form-group"><label>面试轮次</label><select id="r-round"><option>一面</option><option>二面</option><option>三面</option><option>HR面</option><option>终面</option></select></div><div class="form-group full"><label>面试日期</label><input id="r-date" type="date" /></div><div class="form-group full"><label>被问到的问题（一行一个）</label><textarea id="r-questions" placeholder="手撕算法：反转链表&#10;项目深挖：说说你的最大挑战" style="min-height:100px;"></textarea></div><div class="form-group full"><label>整体感受 / 反思</label><textarea id="r-feeling" placeholder="哪些答得好、哪些没答好…"></textarea></div><div class="form-group full"><label>标签（逗号分隔）</label><input id="r-tags" placeholder="算法, 项目, 行为面试" /></div></div><div class="form-actions"><button class="btn btn-ghost" onclick="closeModal('review')">取消</button><button class="btn btn-primary" onclick="saveReview()">保存</button></div></div></div></div>
+<div class="modal-overlay" id="modal-review-detail"><div class="modal"><div class="modal-header"><div class="modal-title" id="detail-title"></div><button class="modal-close" onclick="closeModal('review-detail')">×</button></div><div class="modal-body" id="detail-body"></div></div></div>
+<div class="modal-overlay" id="modal-settings"><div class="modal"><div class="modal-header"><div class="modal-title">⚙ 设置</div><button class="modal-close" onclick="closeModal('settings')">×</button></div><div class="modal-body"><div style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--border-light);"><div style="font-size:12px;font-weight:500;color:var(--ink-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em;">数据库（Supabase）</div><div class="form-group" style="margin-bottom:10px;"><label>Supabase URL</label><input id="settings-url" /></div><div class="form-group"><label>Supabase Anon Key</label><input id="settings-key" /></div></div><div><div style="font-size:12px;font-weight:500;color:var(--ink-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em;">AI 分析（Claude API）</div><div class="form-group"><label>Claude API Key</label><input id="settings-claude-key" type="password" placeholder="sk-ant-api03-..." /></div><div style="font-size:11px;color:var(--ink-faint);margin-top:6px;">获取：<a href="https://console.anthropic.com" target="_blank" style="color:var(--accent)">console.anthropic.com</a></div></div><div class="form-actions"><button class="btn btn-ghost" onclick="closeModal('settings')">取消</button><button class="btn btn-primary" onclick="saveSettings()">保存</button></div></div></div></div>
+<div class="modal-overlay" id="modal-analysis-detail"><div class="modal" style="width:640px;max-width:95vw;"><div class="modal-header"><div class="modal-title" id="analysis-detail-title"></div><button class="modal-close" onclick="closeModal('analysis-detail')">×</button></div><div class="modal-body" id="analysis-detail-body"></div></div></div>
+
+<div class="toast" id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
