@@ -8,8 +8,8 @@ function saveConfig() {
   const url = document.getElementById('setup-url').value.trim().replace(/\/$/, '');
   const key = document.getElementById('setup-key').value.trim();
   if (!url || !key) { alert('请填写 Supabase URL 和 Key'); return; }
-  const claudeKey = document.getElementById('setup-claude-key').value.trim();
-  localStorage.setItem(CONFIG_KEY, JSON.stringify({ url, key, claudeKey }));
+  const geminiKey = document.getElementById('setup-gemini-key').value.trim();
+  localStorage.setItem(CONFIG_KEY, JSON.stringify({ url, key, geminiKey }));
   initApp();
 }
 
@@ -17,7 +17,7 @@ function saveSettings() {
   const cfg = getConfig() || {};
   cfg.url = document.getElementById('settings-url').value.trim().replace(/\/$/, '');
   cfg.key = document.getElementById('settings-key').value.trim();
-  cfg.claudeKey = document.getElementById('settings-claude-key').value.trim();
+  cfg.geminiKey = document.getElementById('settings-gemini-key').value.trim();
   localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
   SB_URL = cfg.url; SB_KEY = cfg.key;
   closeModal('settings');
@@ -28,8 +28,34 @@ function openSettings() {
   const cfg = getConfig() || {};
   document.getElementById('settings-url').value = cfg.url || '';
   document.getElementById('settings-key').value = cfg.key || '';
-  document.getElementById('settings-claude-key').value = cfg.claudeKey || '';
+  document.getElementById('settings-gemini-key').value = cfg.geminiKey || '';
   openModal('settings');
+}
+
+
+// ============================================================
+// GEMINI AI HELPER
+// ============================================================
+async function callGemini(prompt, pdfBase64=null) {
+  const cfg = getConfig();
+  if (!cfg?.geminiKey) throw new Error('未配置 Gemini API Key');
+  const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${cfg.geminiKey}`;
+  const parts = [];
+  if (pdfBase64) {
+    parts.push({ inline_data: { mime_type: 'application/pdf', data: pdfBase64 } });
+  }
+  parts.push({ text: prompt });
+  const res = await fetch(GEMINI_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts }] })
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || res.statusText);
+  }
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 // ============================================================
@@ -147,13 +173,15 @@ function initTrackerForm(editId) {
   document.getElementById('t-date').value=item?.date||todayStr();
   document.getElementById('t-next').value=item?.next_date||'';
   document.getElementById('t-salary').value=item?.salary||'';
+  document.getElementById('t-link').value=item?.link||'';
+  document.getElementById('t-desc').value=item?.description||'';
   document.getElementById('t-note').value=item?.note||'';
 }
 async function saveTracker() {
   const company=document.getElementById('t-company').value.trim();
   const position=document.getElementById('t-position').value.trim();
   if(!company||!position){toast('请填写公司和岗位名称');return;}
-  const data={company,position,status:document.getElementById('t-status').value,date:document.getElementById('t-date').value||null,next_date:document.getElementById('t-next').value||null,salary:document.getElementById('t-salary').value.trim(),note:document.getElementById('t-note').value.trim()};
+  const data={company,position,status:document.getElementById('t-status').value,date:document.getElementById('t-date').value||null,next_date:document.getElementById('t-next').value||null,salary:document.getElementById('t-salary').value.trim(),link:document.getElementById('t-link').value.trim(),description:document.getElementById('t-desc').value.trim(),note:document.getElementById('t-note').value.trim()};
   try{
     if(editingId.tracker){await sbUpdate('tracker',editingId.tracker,data);const i=cache.tracker.findIndex(x=>x.id===editingId.tracker);if(i!==-1)cache.tracker[i]={...cache.tracker[i],...data};toast('已更新 ✓');}
     else{const[row]=await sbInsert('tracker',data);cache.tracker.unshift(row);toast('已添加投递记录 ✓');}
@@ -161,6 +189,28 @@ async function saveTracker() {
   }catch(e){toast('保存失败：'+e.message);}
 }
 async function deleteTracker(id){if(!confirm('确认删除？'))return;try{await sbDelete('tracker',id);cache.tracker=cache.tracker.filter(x=>x.id!==id);renderTracker();renderDashboard();toast('已删除');}catch(e){toast('删除失败');}}
+function showTrackerDetail(id) {
+  const item = cache.tracker.find(x => x.id === id);
+  if (!item) return;
+  const s = statusMap[item.status] || statusMap.pending;
+  document.getElementById('detail-title').textContent = `${item.company} · ${item.position}`;
+  document.getElementById('detail-body').innerHTML = `
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px;">
+      <span class="badge ${s.cls}">${s.label}</span>
+      <span style="font-size:12px;color:var(--ink-faint);">投递于 ${formatDate(item.date)}</span>
+    </div>
+    ${item.link ? `<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:500;color:var(--ink-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;">投递网址</div><a href="${item.link}" target="_blank" style="color:var(--accent);font-size:13px;word-break:break-all;">${item.link}</a></div>` : ''}
+    ${item.description ? `<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:500;color:var(--ink-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.08em;">岗位描述</div><div style="font-size:13px;line-height:1.8;color:var(--ink);white-space:pre-wrap;background:var(--bg);padding:12px;border-radius:8px;max-height:300px;overflow-y:auto;">${item.description}</div></div>` : ''}
+    ${item.salary ? `<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:500;color:var(--ink-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;">薪资</div><div style="font-size:13px;">${item.salary}</div></div>` : ''}
+    ${item.note ? `<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:500;color:var(--ink-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;">备注</div><div style="font-size:13px;line-height:1.7;color:var(--ink);">${item.note}</div></div>` : ''}
+    ${item.next_date ? `<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:500;color:var(--ink-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;">下次节点</div><div style="font-size:13px;">${formatDate(item.next_date)}</div></div>` : ''}
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border-light);display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('review-detail');openModal('tracker','${item.id}')">✎ 编辑</button>
+      <button class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="deleteTracker('${item.id}');closeModal('review-detail')">删除</button>
+    </div>`;
+  openModal('review-detail');
+}
+
 function renderTracker() {
   const fs=document.getElementById('filter-status').value;
   let data=cache.tracker;if(fs) data=data.filter(x=>x.status===fs);
@@ -170,7 +220,8 @@ function renderTracker() {
     const s=statusMap[item.status]||statusMap.pending;
     const days=daysUntil(item.next_date);
     const ns=days===null?'—':days<0?`<span style="color:var(--ink-faint)">${formatDate(item.next_date)}</span>`:days===0?`<span style="color:var(--danger)">今天</span>`:days<=3?`<span style="color:var(--warn)">${formatDate(item.next_date)}</span>`:formatDate(item.next_date);
-    return `<tr><td><div class="company-name">${item.company}</div><div class="position-name">${item.position}</div></td><td><span class="badge ${s.cls}">${s.label}</span></td><td>${formatDate(item.date)}</td><td>${ns}</td><td>${item.salary||'—'}</td><td style="max-width:160px;font-size:12px;color:var(--ink-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.note||'—'}</td><td><button class="action-btn" onclick="openModal('tracker','${item.id}')">✎</button><button class="action-btn" onclick="deleteTracker('${item.id}')">✕</button></td></tr>`;
+    const linkCell = item.link ? `<a href="${item.link}" target="_blank" style="color:var(--accent);font-size:12px;" title="${item.link}">查看JD</a>` : '—';
+    return `<tr><td><div class="company-name">${item.company}</div><div class="position-name">${item.position}</div></td><td><span class="badge ${s.cls}">${s.label}</span></td><td>${formatDate(item.date)}</td><td>${ns}</td><td>${item.salary||'—'}</td><td>${linkCell}</td><td style="max-width:140px;font-size:12px;color:var(--ink-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${item.note||''}">${item.note||'—'}</td><td><button class="action-btn" onclick="openModal('tracker','${item.id}')" title="编辑">✎</button><button class="action-btn" onclick="showTrackerDetail('${item.id}')" title="详情">◎</button><button class="action-btn" onclick="deleteTracker('${item.id}')" title="删除">✕</button></td></tr>`;
   }).join('');
 }
 
@@ -271,7 +322,7 @@ let currentResult = null;
 function checkClaudeKey() {
   const cfg = getConfig();
   const warning = document.getElementById('no-key-warning');
-  if (!cfg?.claudeKey) { warning.style.display = 'block'; } else { warning.style.display = 'none'; }
+  if (!cfg?.geminiKey) { warning.style.display = 'block'; } else { warning.style.display = 'none'; }
 }
 
 function handleResumeDrop(e) {
@@ -304,7 +355,7 @@ function clearResume() {
 
 async function runAIAnalysis() {
   const cfg = getConfig();
-  if (!cfg?.claudeKey) { toast('请先在设置里填写 Claude API Key'); return; }
+  if (!cfg?.geminiKey) { toast('请先在设置里填写 Gemini API Key'); return; }
 
   const resumeText = document.getElementById('resume-text').value.trim();
   const jdText = document.getElementById('jd-text').value.trim();
@@ -323,11 +374,7 @@ async function runAIAnalysis() {
   btn.disabled = true; btn.textContent = '分析中…';
 
   try {
-    // Build messages
-    const userContent = [];
-    if (resumeBase64) {
-      userContent.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: resumeBase64 } });
-    }
+    // Build prompt
     const textPrompt = `请分析以下简历与岗位JD的匹配程度。
 
 ${resumeText ? `【简历内容】\n${resumeText}\n\n` : ''}【岗位JD】
@@ -348,33 +395,10 @@ ${jdText}
 
 评分标准：0-100分，80+非常匹配，60-79较好匹配，40-59有差距，40以下差距较大。每个数组至少3条，建议要具体可操作。`;
 
-    userContent.push({ type: 'text', text: textPrompt });
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': cfg.claudeKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-opus-4-5',
-        max_tokens: 2000,
-        messages: [{ role: 'user', content: userContent }]
-      })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error?.message || response.statusText);
-    }
-
-    const data = await response.json();
-    const rawText = data.content.map(b => b.text || '').join('');
+    const rawText = await callGemini(textPrompt, resumeBase64 || null);
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('AI 返回格式异常，请重试');
-
     const result = JSON.parse(jsonMatch[0]);
     result.company = company; result.position = position;
     currentResult = result;
@@ -416,7 +440,7 @@ function renderResult(r) {
 async function saveAnalysisResult() {
   if (!currentResult) return;
   const cfg = getConfig();
-  if (!cfg?.claudeKey) { toast('请先配置 API Key'); return; }
+  if (!cfg?.geminiKey) { toast('请先配置 Gemini API Key'); return; }
   try {
     const data = {
       company: currentResult.company || '未知',
@@ -490,12 +514,12 @@ function showAnalysisDetail(displayIdx) {
 // ============================================================
 function checkDecodeKey() {
   const cfg = getConfig();
-  document.getElementById('decode-no-key-warning').style.display = cfg?.claudeKey ? 'none' : 'block';
+  document.getElementById('decode-no-key-warning').style.display = cfg?.geminiKey ? 'none' : 'block';
 }
 
 async function runJDDecode() {
   const cfg = getConfig();
-  if (!cfg?.claudeKey) { toast('请先在设置里填写 Claude API Key'); return; }
+  if (!cfg?.geminiKey) { toast('请先在设置里填写 Gemini API Key'); return; }
 
   const jdText = document.getElementById('decode-jd').value.trim();
   if (!jdText) { toast('请先粘贴岗位 JD'); return; }
@@ -538,28 +562,7 @@ ${jdText}
 skills 返回3-5条，daylife 返回3条（上午/下午/晚上或早/中/晚），fit 和 nofit 各3条。`;
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': cfg.claudeKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1500,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error?.message || response.statusText);
-    }
-
-    const data = await response.json();
-    const raw  = data.content.map(b => b.text || '').join('');
+    const raw = await callGemini(prompt);
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('AI 返回格式异常，请重试');
 
