@@ -77,6 +77,7 @@ function navigate(page) {
   if(page==='calendar') renderCalendar();
   if(page==='review') renderReview();
   if(page==='aimatch') { renderAnalysisHistory(); checkClaudeKey(); }
+  if(page==='jddecode') checkDecodeKey();
 }
 
 // ============================================================
@@ -481,6 +482,141 @@ function showAnalysisDetail(displayIdx) {
     <div style="margin-bottom:16px;"><div class="result-block-title">🎯 面试考点</div>${renderItems(r.interview_topics,'interview')}</div>
     <div class="result-block-title">💬 总结</div><div class="result-summary-box">${r.summary||''}</div>`;
   openModal('analysis-detail');
+}
+
+
+// ============================================================
+// JD DECODE
+// ============================================================
+function checkDecodeKey() {
+  const cfg = getConfig();
+  document.getElementById('decode-no-key-warning').style.display = cfg?.claudeKey ? 'none' : 'block';
+}
+
+async function runJDDecode() {
+  const cfg = getConfig();
+  if (!cfg?.claudeKey) { toast('请先在设置里填写 Claude API Key'); return; }
+
+  const jdText = document.getElementById('decode-jd').value.trim();
+  if (!jdText) { toast('请先粘贴岗位 JD'); return; }
+
+  const company  = document.getElementById('decode-company').value.trim();
+  const position = document.getElementById('decode-position').value.trim();
+
+  document.getElementById('decode-empty').style.display   = 'none';
+  document.getElementById('decode-content').style.display = 'none';
+  document.getElementById('decode-loading').style.display = 'flex';
+
+  const btn = document.getElementById('decode-btn');
+  btn.disabled = true; btn.textContent = '解读中…';
+
+  const prompt = `你是一个帮大学生看懂招聘岗位的助手，语言要亲切、口语化，像在和朋友聊天一样。
+
+请解读下面这份岗位 JD：
+公司：${company || '未填写'}
+职位：${position || '未填写'}
+${jdText}
+
+请严格用以下 JSON 格式返回，不要有任何其他文字：
+{
+  "headline": "用一句很吸引人的话概括这个岗位的核心是什么，让人一眼明白（20字以内）",
+  "what": "用2-3段大白话解释这个岗位日常在做什么，避免复述JD原文，要让完全不懂的人也能听懂",
+  "skills": [
+    { "name": "能力名称", "desc": "为什么需要这个能力，具体体现在哪里" },
+    { "name": "能力名称", "desc": "..." }
+  ],
+  "daylife": [
+    { "time": "上午", "task": "具体在做什么，越生动越好" },
+    { "time": "下午", "task": "..." },
+    { "time": "晚上", "task": "..." }
+  ],
+  "fit": ["适合这个岗位的人的特征1", "特征2", "特征3"],
+  "nofit": ["可能不适合的情况1", "情况2", "情况3"],
+  "onesent": "一句话总结这个岗位的本质，要有点个性，不要太官方"
+}
+
+skills 返回3-5条，daylife 返回3条（上午/下午/晚上或早/中/晚），fit 和 nofit 各3条。`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': cfg.claudeKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error?.message || response.statusText);
+    }
+
+    const data = await response.json();
+    const raw  = data.content.map(b => b.text || '').join('');
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('AI 返回格式异常，请重试');
+
+    const r = JSON.parse(jsonMatch[0]);
+    renderDecode(r, company, position);
+
+  } catch(e) {
+    document.getElementById('decode-loading').style.display = 'none';
+    document.getElementById('decode-empty').style.display  = 'flex';
+    toast('解读失败：' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '◉ 解读这个岗位';
+  }
+}
+
+function renderDecode(r, company, position) {
+  document.getElementById('decode-loading').style.display = 'none';
+  document.getElementById('decode-empty').style.display   = 'none';
+  document.getElementById('decode-content').style.display = 'block';
+
+  // Badge + headline
+  const label = [company, position].filter(Boolean).join(' · ') || '岗位解读';
+  document.getElementById('decode-title-badge').textContent = label;
+  document.getElementById('decode-headline').textContent    = r.headline || '';
+
+  // 岗是干什么的
+  document.getElementById('decode-what').innerHTML =
+    (r.what || '').split('\n').filter(Boolean)
+      .map(t => `<p style="margin-bottom:8px;">${t}</p>`).join('');
+
+  // 能力
+  document.getElementById('decode-skills').innerHTML =
+    (r.skills || []).map(s => `
+      <div class="decode-item">
+        <div class="decode-item-dot" style="background:var(--accent);"></div>
+        <div><span style="font-weight:600;color:var(--ink);">${s.name}</span>
+        <span style="color:var(--ink-muted);"> — ${s.desc}</span></div>
+      </div>`).join('');
+
+  // 一天时间线
+  document.getElementById('decode-daylife').innerHTML =
+    `<div class="decode-timeline">` +
+    (r.daylife || []).map(d => `
+      <div class="decode-time-row">
+        <div class="decode-time-label">${d.time}</div>
+        <div class="decode-time-text">${d.task}</div>
+      </div>`).join('') +
+    `</div>`;
+
+  // 适合 / 不适合
+  const fitHtml   = (r.fit    || []).map(t => `<div class="decode-fit-item">${t}</div>`).join('');
+  const nofitHtml = (r.nofit  || []).map(t => `<div class="decode-fit-item">${t}</div>`).join('');
+  document.getElementById('decode-fit').innerHTML    = fitHtml;
+  document.getElementById('decode-nofit').innerHTML  = nofitHtml;
+
+  // 一句话总结
+  document.getElementById('decode-onesent').textContent = r.onesent || '';
 }
 
 // ============================================================

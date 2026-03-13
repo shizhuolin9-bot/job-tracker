@@ -38,6 +38,7 @@
       <div class="nav-item" onclick="navigate('calendar')"><span class="icon">□</span> 截止日历</div>
       <div class="nav-item" onclick="navigate('review')"><span class="icon">◇</span> 面试复盘</div>
       <div class="nav-item ai-nav-item" onclick="navigate('aimatch')"><span class="icon">✦</span> AI 匹配分析</div>
+      <div class="nav-item" onclick="navigate('jddecode')"><span class="icon">◉</span> 岗位解读</div>
     </nav>
     <div class="sidebar-footer">
       <div id="sync-status">☁ 云端同步</div>
@@ -160,6 +161,74 @@
         <div class="review-grid" id="analysis-history-grid"><div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">✦</div><p>还没有分析记录</p></div></div>
       </div>
     </div>
+
+    <!-- ===== JD DECODE PAGE ===== -->
+    <div id="page-jddecode" class="page">
+      <div class="page-header">
+        <h2>岗位解读</h2>
+        <p>把 JD 扔进来，AI 用大白话解释这个岗位是干什么的、要什么能力、一天怎么过</p>
+      </div>
+      <div class="ai-match-layout">
+        <div class="ai-input-panel">
+          <div class="section">
+            <div class="section-header"><div class="section-title">岗位 JD</div></div>
+            <input id="decode-company" placeholder="公司名称（可选）" style="width:100%;margin-bottom:8px;" />
+            <input id="decode-position" placeholder="岗位名称（可选）" style="width:100%;margin-bottom:8px;" />
+            <textarea id="decode-jd" placeholder="把岗位 JD 粘贴进来…&#10;&#10;职位描述、任职要求、工作内容都粘进来，越完整越好" style="min-height:320px;width:100%;font-size:12px;"></textarea>
+          </div>
+          <div id="decode-no-key-warning" style="display:none;padding:11px 14px;background:var(--warn-light);border-radius:8px;font-size:12px;color:var(--warn);margin-bottom:12px;">⚠ 未配置 Claude API Key，请点左下角「设置」填入</div>
+          <button class="btn btn-primary" id="decode-btn" style="width:100%;padding:13px;font-size:14px;" onclick="runJDDecode()">◉ 解读这个岗位</button>
+        </div>
+        <div class="ai-result-panel">
+          <div id="decode-empty" class="result-placeholder">
+            <div style="font-size:38px;opacity:.2;margin-bottom:14px;">◉</div>
+            <p style="color:var(--ink-faint);font-size:13px;line-height:1.9;text-align:center;">粘贴 JD 后<br>点击解读按钮</p>
+          </div>
+          <div id="decode-loading" style="display:none;" class="result-placeholder">
+            <div class="loading-dots"><span></span><span></span><span></span></div>
+            <p style="margin-top:18px;color:var(--ink-muted);font-size:13px;">AI 解读中，稍等几秒…</p>
+          </div>
+          <div id="decode-content" style="display:none;">
+            <div style="margin-bottom:20px;">
+              <div id="decode-title-badge" style="display:inline-block;padding:4px 14px;background:var(--accent-light);border-radius:20px;font-size:12px;color:var(--accent);font-weight:500;margin-bottom:10px;"></div>
+              <div id="decode-headline" style="font-family:'Noto Serif SC',serif;font-size:17px;font-weight:700;color:var(--ink);line-height:1.6;"></div>
+            </div>
+            <div class="decode-cards">
+              <div class="decode-card">
+                <div class="decode-card-icon">🧭</div>
+                <div class="decode-card-title">这个岗是干什么的？</div>
+                <div class="decode-card-body" id="decode-what"></div>
+              </div>
+              <div class="decode-card">
+                <div class="decode-card-icon">🧠</div>
+                <div class="decode-card-title">需要什么能力？</div>
+                <div class="decode-card-body" id="decode-skills"></div>
+              </div>
+              <div class="decode-card">
+                <div class="decode-card-icon">☀️</div>
+                <div class="decode-card-title">这个岗位的一天</div>
+                <div class="decode-card-body" id="decode-daylife"></div>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;">
+              <div class="decode-fit-box decode-fit-yes">
+                <div class="decode-fit-title">✅ 适合你如果…</div>
+                <div id="decode-fit"></div>
+              </div>
+              <div class="decode-fit-box decode-fit-no">
+                <div class="decode-fit-title">⚠️ 可能不适合如果…</div>
+                <div id="decode-nofit"></div>
+              </div>
+            </div>
+            <div style="margin-top:14px;padding:16px;background:var(--accent);border-radius:10px;">
+              <div style="font-size:11px;color:rgba(255,255,255,.7);margin-bottom:6px;letter-spacing:.08em;">一句话总结</div>
+              <div id="decode-onesent" style="font-size:14px;color:white;line-height:1.7;font-weight:500;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 </div>
